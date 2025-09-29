@@ -4,7 +4,12 @@ A dependency-free (no PCL) 2d lidar crowd tracker used in some of our installati
 
 # Usage
 
-clone this repo and [aatb_msgs](https://github.com/aatb-ch/aatb_msgs), build, launch. Tracks are published in world frame, check crowd_tracker.yaml in /config for params.
+clone this repo and [aatb_msgs](https://github.com/aatb-ch/aatb_msgs), build, launch. Tracks are transformed and published in `world` frame, check `crowd_tracker.yaml` in `/config` for params.
+
+# Future desirable features
+
+- handle multiple lidar source to avoid obstacle shadows
+- user-provided static_tf for primary lidar and automatic detection of secondary lidars' tf via ICP
 
 # License
 
