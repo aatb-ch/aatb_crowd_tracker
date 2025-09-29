@@ -18,6 +18,7 @@ A PoseArray topic is published for debugging.
 - make the tracker more robust to false positives/negatives
 - handle multiple lidar sources to avoid obstacle shadows
 - user-provided static_tf for primary lidar and automatic detection of secondary lidars' tf via ICP
+- use OccupancyGrid internally for map representation, publish optionally for debugging
 
 # License
 
