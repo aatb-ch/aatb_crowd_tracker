@@ -1,0 +1,32 @@
+crowd_tracker:
+  ros__parameters:
+    # Background Model Configuration
+    background_model:
+      learning_rate: 0.01              # Alpha for exponential moving average (0.0-1.0)
+      occupancy_threshold: 0.7         # Threshold above which points are considered background
+      decay_frames: 100                # Frames before applying decay to unused bins
+      decay_rate: 0.95                 # Decay rate for old background entries
+      enable: true                     # Enable/disable background removal
+    
+    # Cluster Extraction Configuration  
+    cluster_extractor:
+      min_cluster_size: 3              # Minimum points required for a valid cluster
+      max_cluster_size: 100            # Maximum points in a cluster before splitting
+      base_distance_threshold: 0.3     # Base threshold for clustering adjacent points (meters)
+      distance_scaling_factor: 0.1     # Scale threshold based on distance from sensor
+    
+    # Tracking Configuration
+    tracker:
+      association_threshold: 1.0       # Maximum distance for track-cluster association (meters)
+      max_consecutive_misses: 10       # Maximum frames without update before track deletion
+      min_track_confidence: 0.5        # Minimum confidence for track publication (0.0-1.0)
+      movement_threshold: 0.1          # Minimum velocity to consider track as moving (m/s)
+    
+    # Node Configuration
+    scan_topic: "/scan"                # Input laser scan topic
+    tracks_topic: "/tracks"            # Output tracks topic
+    posearray_topic: "/tracks_posearray" # Output PoseArray topic for RViz2 debugging
+    enable_posearray_debug: true       # Enable PoseArray publishing for debugging
+    laser_frame_id: "laser"       # Frame ID of laser scanner
+    world_frame_id: "world"            # World frame for track coordinates
+    publish_rate: 10.0                 # Publishing rate (Hz)
