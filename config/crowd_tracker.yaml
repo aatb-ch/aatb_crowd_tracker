@@ -22,11 +22,18 @@ crowd_tracker:
       min_track_confidence: 0.5        # Minimum confidence for track publication (0.0-1.0)
       movement_threshold: 0.1          # Minimum velocity to consider track as moving (m/s)
     
+    # Geofence Configuration
+    geofence:
+      enable: false                    # Enable/disable geofence filtering
+      min_x: -10.0                     # Minimum X coordinate (meters)
+      max_x: 10.0                      # Maximum X coordinate (meters)
+      min_y: -10.0                     # Minimum Y coordinate (meters)
+      max_y: 10.0                      # Maximum Y coordinate (meters)
+
     # Node Configuration
     scan_topic: "/scan"                # Input laser scan topic
     tracks_topic: "/tracks"            # Output tracks topic
     posearray_topic: "/tracks_posearray" # Output PoseArray topic for RViz2 debugging
     enable_posearray_debug: true       # Enable PoseArray publishing for debugging
-    laser_frame_id: "laser"       # Frame ID of laser scanner
-    world_frame_id: "world"            # World frame for track coordinates
+    output_frame_id: "world"           # Frame ID for published tracks (laser data will be transformed to this frame)
     publish_rate: 10.0                 # Publishing rate (Hz)

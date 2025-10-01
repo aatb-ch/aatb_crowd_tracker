@@ -53,14 +53,20 @@ private:
         declare_parameter("tracker.max_consecutive_misses", 10);
         declare_parameter("tracker.min_track_confidence", 0.5);
         declare_parameter("tracker.movement_threshold", 0.1);
-        
+
+        // Geofence parameters
+        declare_parameter("geofence.enable", false);
+        declare_parameter("geofence.min_x", -10.0);
+        declare_parameter("geofence.max_x", 10.0);
+        declare_parameter("geofence.min_y", -10.0);
+        declare_parameter("geofence.max_y", 10.0);
+
         // Node parameters
         declare_parameter("scan_topic", "/scan");
         declare_parameter("tracks_topic", "/tracks");
         declare_parameter("posearray_topic", "/tracks_posearray");
         declare_parameter("enable_posearray_debug", true);
-        declare_parameter("laser_frame_id", "laser_link");
-        declare_parameter("world_frame_id", "world");
+        declare_parameter("output_frame_id", "world");
         declare_parameter("publish_rate", 10.0);
     }
 
@@ -70,38 +76,11 @@ private:
     void initializeTransforms() {
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-        
-        // Get frame IDs
-        laser_frame_id_ = get_parameter("laser_frame_id").as_string();
-        world_frame_id_ = get_parameter("world_frame_id").as_string();
-        
-        // Wait for transform to be available (with timeout)
-        RCLCPP_INFO(get_logger(), "Waiting for transform from %s to %s...", 
-                   laser_frame_id_.c_str(), world_frame_id_.c_str());
-        
-        // Try to get static transform with retries
-        int retry_count = 0;
-        const int max_retries = 10;
-        
-        while (retry_count < max_retries && rclcpp::ok()) {
-            try {
-                laser_to_world_transform_ = tf_buffer_->lookupTransform(
-                    world_frame_id_, laser_frame_id_, tf2::TimePointZero, 
-                    std::chrono::seconds(1));
-                
-                RCLCPP_INFO(get_logger(), "Transform cached successfully");
-                transform_available_ = true;
-                break;
-            } catch (const tf2::TransformException& ex) {
-                RCLCPP_WARN(get_logger(), "Transform not available yet: %s", ex.what());
-                retry_count++;
-                rclcpp::sleep_for(std::chrono::seconds(1));
-            }
-        }
-        
-        if (!transform_available_) {
-            RCLCPP_WARN(get_logger(), "Could not get transform, will work in laser frame");
-        }
+
+        // Get output frame ID
+        output_frame_id_ = get_parameter("output_frame_id").as_string();
+
+        RCLCPP_INFO(get_logger(), "Will transform tracks to frame: %s", output_frame_id_.c_str());
     }
 
     /**
@@ -138,6 +117,18 @@ private:
         // Cache parameter values
         enable_background_removal_ = get_parameter("background_model.enable").as_bool();
         enable_posearray_debug_ = get_parameter("enable_posearray_debug").as_bool();
+
+        // Cache geofence parameters
+        enable_geofence_ = get_parameter("geofence.enable").as_bool();
+        geofence_min_x_ = get_parameter("geofence.min_x").as_double();
+        geofence_max_x_ = get_parameter("geofence.max_x").as_double();
+        geofence_min_y_ = get_parameter("geofence.min_y").as_double();
+        geofence_max_y_ = get_parameter("geofence.max_y").as_double();
+
+        if (enable_geofence_) {
+            RCLCPP_INFO(get_logger(), "Geofence enabled: X[%.2f, %.2f] Y[%.2f, %.2f]",
+                       geofence_min_x_, geofence_max_x_, geofence_min_y_, geofence_max_y_);
+        }
     }
 
     /**
@@ -192,22 +183,21 @@ private:
             BackgroundModel dummy_background(0.0, 2.0, 1000, 1.0);  // Threshold > 1 means nothing is background
             clusters = cluster_extractor_->extractClusters(*msg, dummy_background);
         }
-        
-        // Transform clusters to world frame if transform is available
-        if (transform_available_) {
-            transformClustersToWorld(clusters);
-        }
-        
+
+        // Transform clusters from laser frame to output frame
+        transformClusters(clusters, msg->header.frame_id, msg->header.stamp);
+
         // Update tracker
         auto tracks_msg = tracker_->updateTracks(clusters, msg->header.stamp);
-        
-        // Set frame_id appropriately
-        if (transform_available_) {
-            tracks_msg.header.frame_id = world_frame_id_;
-        } else {
-            tracks_msg.header.frame_id = msg->header.frame_id;
+
+        // Set frame_id to output_frame_id
+        tracks_msg.header.frame_id = output_frame_id_;
+
+        // Apply geofence filtering if enabled
+        if (enable_geofence_) {
+            applyGeofenceFilter(tracks_msg);
         }
-        
+
         // Publish tracks
         tracks_pub_->publish(tracks_msg);
         
@@ -228,37 +218,49 @@ private:
     }
 
     /**
-     * @brief Transform clusters from laser frame to world frame
+     * @brief Transform clusters from source frame to output frame
      * @param clusters Vector of clusters to transform (modified in-place)
+     * @param source_frame_id Source frame ID (from LaserScan message)
+     * @param stamp Timestamp for the transform
      */
-    void transformClustersToWorld(std::vector<Cluster>& clusters) {
+    void transformClusters(std::vector<Cluster>& clusters,
+                          const std::string& source_frame_id,
+                          const builtin_interfaces::msg::Time& stamp) {
+        // Skip transformation if source and output frames are the same
+        if (source_frame_id == output_frame_id_) {
+            return;
+        }
+
         for (auto& cluster : clusters) {
             // Transform centroid
             geometry_msgs::msg::PointStamped point_stamped;
-            point_stamped.header.frame_id = laser_frame_id_;
-            point_stamped.header.stamp = this->now();
+            point_stamped.header.frame_id = source_frame_id;
+            point_stamped.header.stamp = stamp;
             point_stamped.point = cluster.centroid;
-            
+
             try {
                 geometry_msgs::msg::PointStamped transformed_point;
-                tf_buffer_->transform(point_stamped, transformed_point, world_frame_id_);
+                tf_buffer_->transform(point_stamped, transformed_point, output_frame_id_,
+                                     tf2::durationFromSec(0.1));
                 cluster.centroid = transformed_point.point;
             } catch (const tf2::TransformException& ex) {
                 RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                                    "Failed to transform cluster: %s", ex.what());
+                                    "Failed to transform cluster from %s to %s: %s",
+                                    source_frame_id.c_str(), output_frame_id_.c_str(), ex.what());
                 continue;
             }
-            
+
             // Transform individual points if needed (currently not used by tracker)
             for (auto& point : cluster.points) {
                 geometry_msgs::msg::PointStamped point_stamped_individual;
-                point_stamped_individual.header.frame_id = laser_frame_id_;
-                point_stamped_individual.header.stamp = this->now();
+                point_stamped_individual.header.frame_id = source_frame_id;
+                point_stamped_individual.header.stamp = stamp;
                 point_stamped_individual.point = point;
-                
+
                 try {
                     geometry_msgs::msg::PointStamped transformed;
-                    tf_buffer_->transform(point_stamped_individual, transformed, world_frame_id_);
+                    tf_buffer_->transform(point_stamped_individual, transformed, output_frame_id_,
+                                         tf2::durationFromSec(0.1));
                     point = transformed.point;
                 } catch (const tf2::TransformException& ex) {
                     // Skip this point if transform fails
@@ -269,20 +271,46 @@ private:
     }
 
     /**
+     * @brief Apply geofence filtering to tracks (removes tracks outside bounds)
+     * @param tracks_msg Tracks message to filter (modified in-place)
+     */
+    void applyGeofenceFilter(aatb_msgs::msg::Tracks& tracks_msg) {
+        auto it = tracks_msg.tracks.begin();
+        size_t filtered_count = 0;
+
+        while (it != tracks_msg.tracks.end()) {
+            const auto& pos = it->pose.position;
+
+            // Check if track is within geofence bounds
+            if (pos.x < geofence_min_x_ || pos.x > geofence_max_x_ ||
+                pos.y < geofence_min_y_ || pos.y > geofence_max_y_) {
+                it = tracks_msg.tracks.erase(it);
+                filtered_count++;
+            } else {
+                ++it;
+            }
+        }
+
+        if (filtered_count > 0) {
+            RCLCPP_DEBUG(get_logger(), "Filtered %zu tracks outside geofence", filtered_count);
+        }
+    }
+
+    /**
      * @brief Create PoseArray message from tracks for RViz2 debugging
      * @param tracks_msg Tracks message to convert
      * @return PoseArray message with track poses
      */
     geometry_msgs::msg::PoseArray createPoseArrayFromTracks(
         const aatb_msgs::msg::Tracks& tracks_msg) {
-        
+
         geometry_msgs::msg::PoseArray posearray_msg;
         posearray_msg.header = tracks_msg.header;
-        
+
         for (const auto& track : tracks_msg.tracks) {
             posearray_msg.poses.push_back(track.pose);
         }
-        
+
         return posearray_msg;
     }
 
@@ -294,10 +322,7 @@ private:
     // Transform handling
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-    geometry_msgs::msg::TransformStamped laser_to_world_transform_;
-    std::string laser_frame_id_;
-    std::string world_frame_id_;
-    bool transform_available_ = false;
+    std::string output_frame_id_;
     
     // Processing components
     std::unique_ptr<BackgroundModel> background_model_;
@@ -308,6 +333,13 @@ private:
     uint32_t frame_counter_;
     bool enable_background_removal_;
     bool enable_posearray_debug_;
+
+    // Geofence parameters
+    bool enable_geofence_;
+    double geofence_min_x_;
+    double geofence_max_x_;
+    double geofence_min_y_;
+    double geofence_max_y_;
 };
 
 } // namespace aatb_crowd_tracker

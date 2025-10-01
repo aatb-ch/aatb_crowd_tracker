@@ -6,6 +6,7 @@ A dependency-free (no PCL) 2d lidar crowd tracker used in some of our installati
 
 - automatic background substraction, takes a couple minutes to warm up the occupancy map
 - temporal tracking with `id` (sequential and incrementing), `entered` timestamp, `age` duration, `moving` flag, velocity and heading estimation
+- configurable output frame, data will be transformed into this desired frame(default `world`)
 
 # Usage
 
