@@ -24,10 +24,10 @@ public:
         float origin_y           = -15.0f;
         int   width              = 150;
         int   height             = 150;
-        float slow_learning_rate = 0.002f;
-        float fast_learning_rate = 0.05f;
-        float slow_decay_rate    = 0.001f;
-        float fast_decay_rate    = 0.02f;
+        float slow_learning_rate = 0.0005f;
+        float fast_learning_rate = 0.10f;
+        float slow_decay_rate    = 0.0005f;
+        float fast_decay_rate    = 0.10f;
         float schmitt_high       = 0.10f;
         float schmitt_low        = 0.02f;
         float derivative_gate    = 0.005f;

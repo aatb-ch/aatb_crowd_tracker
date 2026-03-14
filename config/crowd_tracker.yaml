@@ -38,12 +38,12 @@ crowd_tracker:
                                        # -> 150x150 = 22500 cells at default resolution
 
       # EMA rates — applied when a cell is hit by a scan point
-      slow_learning_rate: 0.002        # Slow background average (converges in ~500 scans)
-      fast_learning_rate: 0.05         # Fast foreground average (converges in ~20 scans)
+      slow_learning_rate: 0.0005       # Slow background (converges in ~2000 scans / ~3 min at 10 Hz)
+      fast_learning_rate: 0.10         # Fast foreground (converges in ~10 scans / ~1 s at 10 Hz)
 
       # Decay rates — applied per scan when a cell is NOT hit
-      slow_decay_rate: 0.001           # Background very stable
-      fast_decay_rate: 0.02            # Foreground fades quickly
+      slow_decay_rate: 0.0005          # Background very stable, decays over thousands of scans
+      fast_decay_rate: 0.10            # Foreground clears in ~15 scans (~1.5 s at 10 Hz)
 
       # Schmitt trigger — hysteresis prevents chatter
       schmitt_high: 0.10               # fast-slow > this activates a cell (also normalization ref for heatmap topic)

@@ -183,12 +183,12 @@ void Tracker::updateTrack(uint32_t track_id, const Cluster& cluster,
     // Calculate time step
     double dt = timeToSeconds(current_time) - timeToSeconds(track.last_updated);
     
-    if (dt > 0.0) {
+    if (dt > 0.0 && use_velocity_prediction_) {
         // Update velocity estimate
         track.velocity = calculateVelocity(track.position, cluster.centroid, dt);
-        
+
         // Update movement detection
-        double speed = std::sqrt(track.velocity.x * track.velocity.x + 
+        double speed = std::sqrt(track.velocity.x * track.velocity.x +
                                track.velocity.y * track.velocity.y);
         track.is_moving = (speed > movement_threshold_);
     }
