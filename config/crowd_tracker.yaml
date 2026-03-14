@@ -7,21 +7,21 @@ crowd_tracker:
       decay_frames: 100                # Frames before applying decay to unused bins
       decay_rate: 0.95                 # Decay rate for old background entries
       enable: true                     # Enable/disable background removal
-    
-    # Cluster Extraction Configuration  
+
+    # Cluster Extraction Configuration
     cluster_extractor:
       min_cluster_size: 3              # Minimum points required for a valid cluster
       max_cluster_size: 100            # Maximum points in a cluster before splitting
       base_distance_threshold: 0.3     # Base threshold for clustering adjacent points (meters)
       distance_scaling_factor: 0.1     # Scale threshold based on distance from sensor
-    
+
     # Tracking Configuration
     tracker:
       association_threshold: 1.0       # Maximum distance for track-cluster association (meters)
       max_consecutive_misses: 10       # Maximum frames without update before track deletion
       min_track_confidence: 0.5        # Minimum confidence for track publication (0.0-1.0)
       movement_threshold: 0.1          # Minimum velocity to consider track as moving (m/s)
-    
+
     # Geofence Configuration
     geofence:
       enable: false                    # Enable/disable geofence filtering
@@ -30,10 +30,50 @@ crowd_tracker:
       min_y: -10.0                     # Minimum Y coordinate (meters)
       max_y: 10.0                      # Maximum Y coordinate (meters)
 
+    # Heatmap Configuration
+    heatmap:
+      enable: true
+      resolution: 0.2                  # Meters per cell
+      max_range: 15.0                  # Grid half-size when geofence is disabled (meters)
+                                       # -> 150x150 = 22500 cells at default resolution
+
+      # EMA rates — applied when a cell is hit by a scan point
+      slow_learning_rate: 0.002        # Slow background average (converges in ~500 scans)
+      fast_learning_rate: 0.05         # Fast foreground average (converges in ~20 scans)
+
+      # Decay rates — applied per scan when a cell is NOT hit
+      slow_decay_rate: 0.001           # Background very stable
+      fast_decay_rate: 0.02            # Foreground fades quickly
+
+      # Schmitt trigger — hysteresis prevents chatter
+      schmitt_high: 0.10               # fast-slow > this activates a cell (also normalization ref for heatmap topic)
+      schmitt_low: 0.02                # abs(fast-slow) < this allows deactivation
+      derivative_gate: 0.005           # min |d(fast-slow)| counted as "edge" — blocks deactivation during transitions
+
+      # Blob extraction from activation grid
+      min_blob_cells: 2                # Minimum active cells to form a valid blob
+      max_blob_cells: 500              # Maximum cells per blob
+
+      # Heatmap blob tracker (velocity prediction disabled — avoids ghost extrapolation)
+      tracker:
+        association_threshold: 1.5     # Max centroid distance for blob-track association (meters)
+        max_consecutive_misses: 5      # Frames before a blob track is dropped
+        min_track_confidence: 0.5      # Minimum confidence for publication
+
+      # Timeout: if no scan received for scan_timeout seconds,
+      # decay-only updates run at 10 Hz until scans resume
+      scan_timeout: 1.0
+
+      # Topics
+      heatmap_topic: "/heatmap"
+      active_topic: "/heatmap_active"
+      tracks_topic: "/heatmap_tracks"
+      tracks_posearray_topic: "/heatmap_tracks_posearray"
+
     # Node Configuration
-    scan_topic: "/scan"                # Input laser scan topic
-    tracks_topic: "/tracks"            # Output tracks topic
-    posearray_topic: "/tracks_posearray" # Output PoseArray topic for RViz2 debugging
-    enable_posearray_debug: true       # Enable PoseArray publishing for debugging
-    output_frame_id: "world"           # Frame ID for published tracks (laser data will be transformed to this frame)
-    publish_rate: 10.0                 # Publishing rate (Hz)
+    scan_topic: "/scan"
+    tracks_topic: "/tracks"
+    posearray_topic: "/tracks_posearray"
+    enable_posearray_debug: true
+    output_frame_id: "world"
+    publish_rate: 10.0

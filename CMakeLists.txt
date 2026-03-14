@@ -15,6 +15,7 @@ find_package(builtin_interfaces REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(aatb_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 
@@ -29,12 +30,14 @@ add_executable(crowd_tracker_node
   src/background_model.cpp
   src/cluster_extractor.cpp
   src/tracker.cpp
+  src/heatmap_model.cpp
 )
 
 ament_target_dependencies(crowd_tracker_node
   rclcpp
   sensor_msgs
   geometry_msgs
+  nav_msgs
   std_msgs
   builtin_interfaces
   tf2

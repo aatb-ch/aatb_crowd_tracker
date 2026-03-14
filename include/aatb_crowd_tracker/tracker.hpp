@@ -46,7 +46,8 @@ public:
            double association_threshold = 1.0,
            uint32_t max_consecutive_misses = 10,
            double min_track_confidence = 0.5,
-           double movement_threshold = 0.1);
+           double movement_threshold = 0.1,
+           bool use_velocity_prediction = true);
 
     /**
      * @brief Update tracks with new cluster observations
@@ -175,7 +176,8 @@ private:
     uint32_t max_consecutive_misses_;                ///< Maximum misses before deletion
     double min_track_confidence_;                    ///< Minimum confidence for publication
     double movement_threshold_;                      ///< Minimum velocity for movement detection
-    
+    bool use_velocity_prediction_;                   ///< When false, tracks stay at last known position on miss
+
     builtin_interfaces::msg::Time last_update_time_; ///< Time of last update for dt calculation
 };
 

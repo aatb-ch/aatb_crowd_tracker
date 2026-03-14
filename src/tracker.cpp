@@ -9,13 +9,15 @@ Tracker::Tracker(rclcpp::Node* node,
                double association_threshold,
                uint32_t max_consecutive_misses,
                double min_track_confidence,
-               double movement_threshold)
+               double movement_threshold,
+               bool use_velocity_prediction)
     : node_(node),
       next_track_id_(1),
       association_threshold_(association_threshold),
       max_consecutive_misses_(max_consecutive_misses),
       min_track_confidence_(min_track_confidence),
-      movement_threshold_(movement_threshold) {
+      movement_threshold_(movement_threshold),
+      use_velocity_prediction_(use_velocity_prediction) {
     
     // Initialize last update time to current time
     last_update_time_ = node_->now();
@@ -202,11 +204,10 @@ void Tracker::updateTrack(uint32_t track_id, const Cluster& cluster,
 
 void Tracker::predictTracks(double dt) {
     for (auto& [track_id, track] : tracks_) {
-        // Simple constant velocity prediction
-        track.position.x += track.velocity.x * dt;
-        track.position.y += track.velocity.y * dt;
-        
-        // Decrease confidence for predictions
+        if (use_velocity_prediction_) {
+            track.position.x += track.velocity.x * dt;
+            track.position.y += track.velocity.y * dt;
+        }
         track.confidence *= 0.95;
     }
 }
