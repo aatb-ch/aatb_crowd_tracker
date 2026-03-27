@@ -14,14 +14,16 @@ BackgroundModel::BackgroundModel(float learning_rate,
 }
 
 void BackgroundModel::update(const sensor_msgs::msg::LaserScan& scan, uint32_t current_frame) {
+    current_frame_ = current_frame;
+
     for (size_t i = 0; i < scan.ranges.size(); ++i) {
         float range = scan.ranges[i];
-        
+
         // Skip invalid readings
         if (!std::isfinite(range) || range < scan.range_min || range > scan.range_max) {
             continue;
         }
-        
+
         updatePoint(i, range, current_frame, scan);
     }
 }
@@ -30,7 +32,10 @@ bool BackgroundModel::isBackground(size_t scan_idx, float range,
                                   const sensor_msgs::msg::LaserScan& scan) const {
     PolarBin bin = quantize(scan_idx, range, scan);
     auto it = background_map_.find(bin.hash());
-    return (it != background_map_.end() && it->second.occupancy_score > occupancy_threshold_);
+    if (it == background_map_.end()) return false;
+    // Compute decayed score on the fly so stale bins lose background status
+    float score = decayedScore(it->second.occupancy_score, it->second.last_update);
+    return score > occupancy_threshold_;
 }
 
 void BackgroundModel::clear() {
@@ -60,27 +65,39 @@ void BackgroundModel::updatePoint(size_t scan_idx, float range, uint32_t current
                                  const sensor_msgs::msg::LaserScan& scan) {
     PolarBin bin = quantize(scan_idx, range, scan);
     auto& data = background_map_[bin.hash()];
-    
-    // Apply decay if this bin hasn't been updated recently
+
+    // Apply proportional decay based on how many frames this bin has been idle
     if (data.last_update > 0 && current_frame - data.last_update > decay_frames_) {
-        data.occupancy_score *= decay_rate_;
-        
+        data.occupancy_score = decayedScore(data.occupancy_score, data.last_update);
+
         // Remove negligible entries to save memory
         if (data.occupancy_score < 0.01f) {
             background_map_.erase(bin.hash());
             return;
         }
     }
-    
+
     // Update with exponential moving average
     data.occupancy_score = learning_rate_ + (1.0f - learning_rate_) * data.occupancy_score;
-    
+
     // Clamp to [0, 1]
     if (data.occupancy_score > 1.0f) {
         data.occupancy_score = 1.0f;
     }
-    
+
     data.last_update = current_frame;
+}
+
+void BackgroundModel::cleanup() {
+    auto it = background_map_.begin();
+    while (it != background_map_.end()) {
+        float score = decayedScore(it->second.occupancy_score, it->second.last_update);
+        if (score < 0.01f) {
+            it = background_map_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // namespace aatb_crowd_tracker

@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <cstdint>
+#include <cmath>
 #include <sensor_msgs/msg/laser_scan.hpp>
 
 namespace aatb_crowd_tracker {
@@ -56,19 +57,23 @@ public:
     void update(const sensor_msgs::msg::LaserScan& scan, uint32_t current_frame);
 
     /**
-     * @brief Check if a point is part of the background
-     * @param scan_idx Index in the scan array
-     * @param range Range value at this index
-     * @param scan The laser scan message (for angle calculation)
-     * @return True if the point is considered background
+     * @brief Check if a point is part of the background.
+     *        Computes on-the-fly decay so bins that haven't been re-observed
+     *        still lose their background status over time.
      */
-    bool isBackground(size_t scan_idx, float range, 
+    bool isBackground(size_t scan_idx, float range,
                      const sensor_msgs::msg::LaserScan& scan) const;
 
     /**
-     * @brief Clear the background model
+     * @brief Clear the entire background model (full reset)
      */
     void clear();
+
+    /**
+     * @brief Sweep the map and prune bins whose decayed score is negligible.
+     *        Call periodically (e.g. every 1000 frames) to reclaim memory.
+     */
+    void cleanup();
 
     /**
      * @brief Get the number of active bins in the model
@@ -97,12 +102,22 @@ private:
     void updatePoint(size_t scan_idx, float range, uint32_t current_frame,
                     const sensor_msgs::msg::LaserScan& scan);
 
+    /// Compute the decayed score of a bin given elapsed frames since last update
+    float decayedScore(float score, uint32_t last_update) const {
+        if (current_frame_ <= last_update) return score;
+        uint32_t elapsed = current_frame_ - last_update;
+        if (elapsed <= decay_frames_) return score;
+        uint32_t decay_steps = elapsed - decay_frames_;
+        return score * std::pow(decay_rate_, static_cast<float>(decay_steps));
+    }
+
     std::unordered_map<size_t, BinData> background_map_;  ///< Sparse storage of occupied bins
     float learning_rate_;                                  ///< Learning rate for exponential average
     float occupancy_threshold_;                           ///< Threshold for background classification
     uint32_t decay_frames_;                               ///< Frames before decay starts
     float decay_rate_;                                    ///< Rate of decay for old entries
-    
+    uint32_t current_frame_ = 0;                          ///< Latest frame seen by update()
+
     static constexpr uint16_t ANGULAR_BINS = 500;         ///< Number of angular bins (0.72°/bin)
     static constexpr float RANGE_RESOLUTION = 0.5f;       ///< Range quantization in meters
 };

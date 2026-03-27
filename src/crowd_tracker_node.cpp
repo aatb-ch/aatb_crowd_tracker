@@ -76,6 +76,8 @@ private:
         declare_parameter("heatmap.tracker.min_track_confidence", 0.5);
         declare_parameter("heatmap.scan_timeout", 1.0);
 
+        declare_parameter("background_model.reset_interval_minutes", 30);
+
         declare_parameter("scan_topic", "/scan");
         declare_parameter("tracks_topic", "/tracks");
         declare_parameter("posearray_topic", "/tracks_posearray");
@@ -218,6 +220,20 @@ private:
                 [this]() { heatmapFallbackTick(); });
         }
 
+        // Periodic background model reset to prevent long-term sensitivity loss
+        const int reset_minutes = get_parameter("background_model.reset_interval_minutes").as_int();
+        if (reset_minutes > 0 && enable_background_removal_) {
+            bg_reset_timer_ = create_wall_timer(
+                std::chrono::minutes(reset_minutes),
+                [this, reset_minutes]() {
+                    background_model_->clear();
+                    RCLCPP_INFO(get_logger(),
+                        "Background model reset (every %d min) — re-learning from scratch",
+                        reset_minutes);
+                });
+            RCLCPP_INFO(get_logger(), "Background model will reset every %d minutes", reset_minutes);
+        }
+
         RCLCPP_INFO(get_logger(), "Subscribed to %s, publishing tracks to %s",
             scan_topic.c_str(), tracks_topic.c_str());
     }
@@ -264,6 +280,11 @@ private:
         }
 
         if (frame_counter_ % 100 == 0) {
+            // Periodic cleanup: prune stale bins from the background map
+            if (enable_background_removal_ && frame_counter_ % 1000 == 0) {
+                background_model_->cleanup();
+            }
+
             RCLCPP_INFO(get_logger(),
                 "Frame %u: %zu clusters, %zu tracks, %zu bg bins",
                 frame_counter_, clusters.size(),
@@ -426,6 +447,7 @@ private:
     rclcpp::Publisher<aatb_msgs::msg::Tracks>::SharedPtr         heatmap_tracks_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr  heatmap_tracks_posearray_pub_;
     rclcpp::TimerBase::SharedPtr                                 fallback_timer_;
+    rclcpp::TimerBase::SharedPtr                                 bg_reset_timer_;
 
     std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
